@@ -1,0 +1,20 @@
+GIT
+  remote: https://github.com/street-address-rb/street-address.git
+  revision: ab8935dec1c76653ecd878cbee4873579c2c8fb2
+  specs:
+    StreetAddress (2.0.0)
+
+GEM
+  remote: http://rubygems.org/
+  specs:
+    kiba (2.0.0)
+
+PLATFORMS
+  ruby
+
+DEPENDENCIES
+  StreetAddress (>= 2.0)!
+  kiba
+
+BUNDLED WITH
+   1.16.6

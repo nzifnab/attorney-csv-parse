@@ -1,0 +1,68 @@
+$LOAD_PATH.unshift(File.dirname(__FILE__))
+require 'attorney_convert/csv_destination'
+require 'attorney_convert/csv_source'
+require 'street_address'
+
+ENV['PROJECT_ROOT'] = File.expand_path(Dir.pwd)
+
+input_csv_filename = ENV['CSV_FILE']
+
+source CsvSource, input_csv_filename
+
+def parse_address_string(address)
+  matches = address.match(
+    %r{
+      (.*?)   # Matches the company name, if it exists.
+              # this is a non-greedy mach so that the first number
+              # that shows up will be the start of the address.
+              # -- can company names have numbers in them??
+      (?:,\s+)?   # Company name is always followed by a ', '
+                  # optional match
+      (       # Matching group for the full address string.
+        (?:\d+|po\sbox\s\d+) # Address starts with a number OR with
+                             # PO Box followed by a number,
+                             # case insensitive
+        .*$   # Grab the rest of the string to include in the address.
+      )
+    }ix
+  )
+  if matches
+    company_name = matches[1]
+    full_address = matches[2]
+  else
+    # If it didn't match... try as if the whole thing is an addr?
+    puts "Address was difficult to split out: #{address}"
+    company_name = ""
+    full_address = address
+  end
+  parsed_address = StreetAddress::US.parse(full_address)
+
+  if !parsed_address
+    {law_firm: company_name}
+  else
+    {
+      law_firm: company_name,
+      full_address: full_address,
+      address1: parsed_address.to_s(:line1),
+      city: parsed_address.city,
+      state: parsed_address.state,
+      zip: parsed_address.full_postal_code
+    }
+  end
+end
+
+# declare a row transform to process a given field
+transform do |row|
+  name_split = row[:name].to_s.split(' , ')
+  row[:first_name] = name_split.pop
+  # just in case there are extra commas in the name for whatever reason.
+  row[:last_name] = name_split.join(' , ')
+
+  address_attrs = parse_address_string(row[:address])
+  address_attrs.each do |column_name, val|
+    row[column_name] = val
+  end
+  row
+end
+
+destination CsvDestination
