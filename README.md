@@ -1,3 +1,7 @@
+This uses `ruby_postal` to parse the addresses (https://github.com/openvenues/ruby_postal)
+
+which requires libpostal to be installed locally. Follow the instructions in that repo FIRST to install libpostal.
+
 ## TO RUN
 
     bundle

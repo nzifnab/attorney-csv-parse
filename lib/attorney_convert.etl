@@ -1,7 +1,7 @@
 $LOAD_PATH.unshift(File.dirname(__FILE__))
 require 'attorney_convert/csv_destination'
 require 'attorney_convert/csv_source'
-require 'street_address'
+require 'ruby_postal/parser'
 
 ENV['PROJECT_ROOT'] = File.expand_path(Dir.pwd)
 
@@ -9,46 +9,63 @@ input_csv_filename = ENV['CSV_FILE']
 
 source CsvSource, input_csv_filename
 
-def parse_address_string(address)
-  matches = address.match(
-    %r{
-      (.*?)   # Matches the company name, if it exists.
-              # this is a non-greedy mach so that the first number
-              # that shows up will be the start of the address.
-              # -- can company names have numbers in them??
-      (?:,\s+)?   # Company name is always followed by a ', '
-                  # optional match
-      (       # Matching group for the full address string.
-        (?:\d+|po\sbox\s\d+) # Address starts with a number OR with
-                             # PO Box followed by a number,
-                             # case insensitive
-        .*$   # Grab the rest of the string to include in the address.
-      )
-    }ix
-  )
-  if matches
-    company_name = matches[1]
-    full_address = matches[2]
-  else
-    # If it didn't match... try as if the whole thing is an addr?
-    puts "Address was difficult to split out: #{address}"
-    company_name = ""
-    full_address = address
+class CsvAddress
+  def initialize(attrs)
+    # See available attrs from the parser here: https://github.com/openvenues/libpostal#parser-labels
+    # not all get filled out each time.
+    @attrs = attrs
   end
-  parsed_address = StreetAddress::US.parse(full_address)
 
-  if !parsed_address
-    {law_firm: company_name}
-  else
-    {
-      law_firm: company_name,
-      full_address: full_address,
-      address1: parsed_address.to_s(:line1),
-      city: parsed_address.city,
-      state: parsed_address.state,
-      zip: parsed_address.full_postal_code
-    }
+  def street_address
+    join_with [address1, address2], ", "
   end
+
+  def full_address
+    join_with [street_address, city, state, postal_code], ", "
+  end
+
+  def address1
+    join_with [@attrs[:house_number], @attrs[:road], @attrs[:po_box], @attrs[:suburb]], " "
+  end
+
+  def address2
+    join_with [@attrs[:level], @attrs[:unit]], " "
+  end
+
+  def city
+    join_with [@attrs[:city_district], @attrs[:city], @attrs[:island]], " "
+  end
+
+  def state
+    join_with [@attrs[:state_district], @attrs[:state]], ", "
+  end
+
+  def postal_code
+    @attrs[:postcode]
+  end
+
+  private
+
+  def join_with(items, separator=", ")
+    items.reject{|val| val.to_s.strip == ""}.join(separator)
+  end
+end
+
+def parse_address_string(address)
+  parsed_address = Postal::Parser.parse_address(address)
+  # Comes out as a weird array format, we'll convert it to a hash
+  parsed_address = Hash[parsed_address.map{|val| [val[:label], val[:value]]}]
+
+  addr = CsvAddress.new(parsed_address)
+  {
+    company: parsed_address[:house],
+    full_address: addr.full_address,
+    address1: addr.address1,
+    address2: addr.address2,
+    city: addr.city,
+    state: addr.state,
+    postal_code: addr.postal_code
+  }
 end
 
 # declare a row transform to process a given field
