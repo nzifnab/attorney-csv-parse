@@ -2,6 +2,7 @@ $LOAD_PATH.unshift(File.dirname(__FILE__))
 require 'attorney_convert/csv_destination'
 require 'attorney_convert/csv_source'
 require 'ruby_postal/parser'
+require 'date'
 
 ENV['PROJECT_ROOT'] = File.expand_path(Dir.pwd)
 
@@ -74,6 +75,8 @@ transform do |row|
   row[:first_name] = name_split.pop
   # just in case there are extra commas in the name for whatever reason.
   row[:last_name] = name_split.join(' , ')
+
+  row[:bar_year] = Date.parse(row[:bar_admission]).year if row[:bar_admission].to_s.strip != ""
 
   address_attrs = parse_address_string(row[:address])
   address_attrs.each do |column_name, val|
