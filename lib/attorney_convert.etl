@@ -31,7 +31,7 @@ class CsvAddress
     newval = val
     # If the attribute is the same text as it was in the raw address field,
     # then we can just use that original text so that the capitalization stays the same...
-    if @raw_address =~ /(?:^|[^a-zA-Z0-9])(#{val.split("").join(",?")})(?:$|[^a-zA-Z0-9])/i
+    if @raw_address =~ /(?:^|[^a-zA-Z0-9])(#{val.split("").map{|v| Regexp.escape(v)}.join(",?")})(?:$|[^a-zA-Z0-9])/i
       newval = $1
     else
       newval = val.titleize
@@ -83,24 +83,35 @@ def parse_address_string(address)
 
   addr = CsvAddress.new(address)
   {
-    company: addr.house,
-    full_address: addr.full_address,
-    address1: addr.address1,
-    address2: addr.address2,
-    city: addr.city,
-    state: addr.state,
-    postal_code: addr.postal_code
+    company: addr.house.to_s,
+    full_address: addr.full_address.to_s,
+    address1: addr.address1.to_s,
+    address2: addr.address2.to_s,
+    city: addr.city.to_s,
+    state: addr.state.to_s,
+    postal_code: addr.postal_code.to_s
   }
 end
 
 # declare a row transform to process a given field
 transform do |row|
   name_split = row[:name].to_s.split(' , ')
-  row[:first_name] = name_split.pop
-  # just in case there are extra commas in the name for whatever reason.
-  row[:last_name] = name_split.join(' , ')
+  first_last = name_split.pop.split(" ")
+  first_name = first_last.shift
+  middle_name = first_last.join(" ")
+  last_name = name_split.join(' , ')
 
-  row[:bar_year] = Date.parse(row[:bar_admission]).year if row[:bar_admission].to_s.strip != ""
+  row[:first_name] = first_name if row[:first_name].to_s.strip == ""
+  row[:middle_name] = middle_name if row[:middle_name].to_s.strip == ""
+  # just in case there are extra commas in the name for whatever reason.
+  row[:last_name] = last_name if row[:last_name].to_s.strip == ""
+
+  begin
+    row[:bar_year] = Date.parse(row[:bar_admission]).year if row[:bar_admission].to_s.strip != ""
+  rescue ArgumentError => e
+    puts "Date '#{row[:bar_admission]}' could not be parsed: #{e.message}"
+  end
+  row[:bar_year] ||= ""
 
   address_attrs = parse_address_string(row[:address])
   address_attrs.each do |column_name, val|
