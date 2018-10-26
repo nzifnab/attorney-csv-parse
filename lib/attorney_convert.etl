@@ -3,6 +3,7 @@ require 'attorney_convert/csv_destination'
 require 'attorney_convert/csv_source'
 require 'ruby_postal/parser'
 require 'date'
+require 'active_support/inflector'
 
 ENV['PROJECT_ROOT'] = File.expand_path(Dir.pwd)
 
@@ -11,10 +12,31 @@ input_csv_filename = ENV['CSV_FILE']
 source CsvSource, input_csv_filename
 
 class CsvAddress
-  def initialize(attrs)
+  def initialize(raw_address)
+    @raw_address = raw_address
+
+    parsed_address = Postal::Parser.parse_address(@raw_address)
+    # Comes out as a weird array format, we'll convert it to a hash
+    parsed_address = Hash[parsed_address.map{|val| [val[:label], val[:value]]}]
+
     # See available attrs from the parser here: https://github.com/openvenues/libpostal#parser-labels
     # not all get filled out each time.
-    @attrs = attrs
+    @attrs = parsed_address
+  end
+
+  def attrib(name)
+
+    val = @attrs[name]
+    return val if val.to_s.strip == ""
+    newval = val
+    # If the attribute is the same text as it was in the raw address field,
+    # then we can just use that original text so that the capitalization stays the same...
+    if @raw_address =~ /(?:^|[^a-zA-Z0-9])(#{val.split("").join(",?")})(?:$|[^a-zA-Z0-9])/i
+      newval = $1
+    else
+      newval = val.titleize
+    end
+    newval
   end
 
   def street_address
@@ -26,23 +48,27 @@ class CsvAddress
   end
 
   def address1
-    join_with [@attrs[:house_number], @attrs[:road], @attrs[:po_box], @attrs[:suburb]], " "
+    join_with [attrib(:house_number), attrib(:road), attrib(:po_box), attrib(:suburb)], " "
   end
 
   def address2
-    join_with [@attrs[:level], @attrs[:unit]], " "
+    join_with [attrib(:level), attrib(:unit)], " "
   end
 
   def city
-    join_with [@attrs[:city_district], @attrs[:city], @attrs[:island]], " "
+    join_with [attrib(:city_district), attrib(:city), attrib(:island)], " "
   end
 
   def state
-    join_with [@attrs[:state_district], @attrs[:state]], ", "
+    join_with [attrib(:state_district), attrib(:state)], ", "
   end
 
   def postal_code
-    @attrs[:postcode]
+    attrib(:postcode)
+  end
+
+  def house
+    attrib(:house)
   end
 
   private
@@ -53,13 +79,11 @@ class CsvAddress
 end
 
 def parse_address_string(address)
-  parsed_address = Postal::Parser.parse_address(address)
-  # Comes out as a weird array format, we'll convert it to a hash
-  parsed_address = Hash[parsed_address.map{|val| [val[:label], val[:value]]}]
 
-  addr = CsvAddress.new(parsed_address)
+
+  addr = CsvAddress.new(address)
   {
-    company: parsed_address[:house],
+    company: addr.house,
     full_address: addr.full_address,
     address1: addr.address1,
     address2: addr.address2,
